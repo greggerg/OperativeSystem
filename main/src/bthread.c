@@ -9,23 +9,37 @@
 #pragma clang diagnostic ignored "-Wincompatible-pointer-types-discards-qualifiers"
 #define STACK_SIZE 8
 
+__bthread_scheduler_private *bthread_get_scheduler() {
+    if (sp == NULL) {
+        printf("Creating the scheduler\n");
+        sp = malloc(sizeof(__bthread_scheduler_private));
+        sp->queue = NULL;
+        sp->current_item = NULL;
+        sp->current_tid = 0;
+    }
+    return sp;
+};
+
 /*
 Creates a new thread structure and puts it at the end of the queue. The thread identifier (stored in the buffer pointed by bthread) corresponds to the position in the queue.
  The thread is not started when calling this function. Attributes passed through the attr argument are ignored
 (thus it is possible to pass a NULL pointer). The stack pointer for new created threads is NULL.*/
 int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start_routine)(void *), void *arg) {
     printf("Position in the queue %ld\n", *bthread);
-    __bthread_private thread;
-    thread.tid = *bthread;
-    thread.body = start_routine;
-    thread.arg = arg;
-    thread.state = 1;
-    thread.attr = *attr;
-    thread.stack = NULL;
-    TQueue queue = bthread_get_queue_at(*bthread);
-    tqueue_enqueue(&queue, &thread);
+    __bthread_private *thread = malloc(sizeof(__bthread_private));
+    thread->tid = *bthread;
+    thread->body = start_routine;
+    thread->arg = arg;
+    thread->state = __BTHREAD_BLOCKED;
+    if (attr != NULL) {
+        thread->attr = *attr;
+    }
+    thread->stack = NULL;
+
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
-    scheduler->queue = queue;
+    thread->tid = tqueue_enqueue(&scheduler->queue, thread);
+    *bthread = thread->tid;
+    scheduler->current_item = scheduler->queue;
     return 0;
 }
 
@@ -42,7 +56,6 @@ void bthread_yield() {
         restore_context(scheduler->context);
 }
 
-#pragma clang diagnostic pop
 
 int bthread_join(bthread_t bthread, void **retval) {
 
@@ -63,12 +76,6 @@ int bthread_join(bthread_t bthread, void **retval) {
     if (scheduler->current_item == NULL) { printf("Null item\n"); }
     else {
         thread = tqueue_get_data(scheduler->queue);
-        bthread_t y = thread->tid;
-        printf("Thread id = %lu \n", y);
-
-        printf("Thread state = %d \n", thread->state);
-        printf("Thread body = %p \n", thread->body);
-
     }
     save_context(scheduler->context);
 
@@ -107,4 +114,5 @@ void bthread_exit(void *retval) {
     currentThread->state = __BTHREAD_ZOMBIE;
     currentThread->retval = retval;
 }
+
 #pragma clang diagnostic pop

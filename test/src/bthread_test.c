@@ -1,6 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include "bthread.h"
+#include "../../main/include/bthread.h"
 
 typedef struct TQueueNode {
         struct TQueueNode * next;
@@ -18,11 +18,9 @@ void bthread_test(){
 bthread_t bthread = 17;
 void *arg = "Greg";
 //create
-//void *(*start_routine) (void *)
 printf("Trying\n");
 int result  = bthread_create(&bthread, NULL,&routine, arg);
 //start
-	//volatile __bthread_scheduler_private* scheduler = bthread_get_scheduler();
 //join
 void* retval="42s";
 printf("Trying to join\n");

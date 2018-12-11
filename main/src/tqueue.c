@@ -1,104 +1,98 @@
 #include <stdio.h>
 #include <stdlib.h>
-#include <setjmp.h>
-#include "../include/bthread.h"
-#include "../include/bthread_private.h"
 #include "../include/tqueue.h"
 
-
-//#include <pthread.h>
-#define STACK_SIZE 8
-/*
-Creates a new thread structure and puts it at the end of the queue. The thread identifier (stored in the buffer pointed by bthread) corresponds to the position in the queue.
- The thread is not started when calling this function. Attributes passed through the attr argument are ignored
-(thus it is possible to pass a NULL pointer). The stack pointer for new created threads is NULL.*/
-int bthread_create(bthread_t *bthread, const bthread_attr_t *attr,void *(*start_routine) (void *), void *arg){
-    printf("Position in the queue %ld\n",*bthread);
-    __bthread_private thread;
-    thread.tid= *bthread;
-    thread.body=start_routine;
-    thread.arg=arg;
-    thread.state=1;
-    thread.attr=*attr;
-    thread.stack=NULL;
-    TQueue queue = bthread_get_queue_at(*bthread);
-    tqueue_enqueue(&queue,&thread);
-    volatile __bthread_scheduler_private* scheduler = bthread_get_scheduler();
-    scheduler->queue=queue;
-    return 0;
+typedef struct TQueueNode {
+    struct TQueueNode * next;
+    void * data;
 }
+        TQueueNode;
 
-/*Saves the thread context and restores (long-jumps to) the scheduler context. Saving the thread
-context is achieved using sigsetjmp, which is similar to setjmp but can also save the signal
-mask if the provided additional parameter is not zero (to restore both the context and the signal
-mask the corresponding call is siglongjmp). Saving and restoring the signal mask is required
-for implementing preemption.*/
-void bthread_yield(){
-    volatile __bthread_scheduler_private* scheduler = bthread_get_scheduler();
-    __bthread_private* currentThread = (__bthread_private*) scheduler->current_item;
-    if(!save_context(currentThread->context))
-        restore_context(scheduler->context);
-}
-int bthread_join(bthread_t bthread, void **retval)
-{
+/* Adds a new element at the end of the list, returns its position */
+unsigned long int tqueue_enqueue(TQueue * list, void * data) {
 
-    volatile __bthread_scheduler_private* scheduler = bthread_get_scheduler();
-    __bthread_private* thread = (__bthread_private*) tqueue_get_data(scheduler->queue);
-    if(thread==NULL){printf("Null queue\n");}
-    else{
-        printf("Thread id = %ld \n",thread->tid);
-        thread->state=2;
-        printf("Thread state = %d \n", thread->state);
-
-
-        printf("Thread body = %ld \n", thread->body);
-    }
-//
-    scheduler->current_item = scheduler->queue;
-
-    if(scheduler->current_item ==NULL){printf("Null item\n");}
-    else{
-        thread = tqueue_get_data(scheduler->queue);
-        int y = thread->tid;
-        printf("Thread id = %d \n", y);
-
-        printf("Thread state = %ld \n", thread->state);
-        printf("Thread body = %ld \n", thread->body);
-
-    }
-    save_context(scheduler->context);
-
-    if (bthread_check_if_zombie(bthread, retval)) return 0;
-    printf("Not a zombie \n");
-    __bthread_private* tp;
-    do {
-//move to the next one
-        scheduler->current_item = tqueue_at_offset(scheduler->current_item, 1);
-        tp = (__bthread_private*) tqueue_get_data(scheduler->current_item);
-    } while (tp->state != __BTHREAD_READY);
-    printf("Restore \n");
-    // Restore context or setup stack and perform first call
-    if (tp->stack) {
-        restore_context(tp->context);
+    if (*list == NULL) {
+        *list = ( TQueue) malloc(sizeof( TQueue));
+        //printf("List empty adding first element %d\n",*(int*)data);
+        //creo nodo dinamicamente
+        TQueueNode * link = ( TQueueNode * ) malloc(sizeof( TQueueNode));
+        //assegno i dati
+        link->data=data;
+        link->next=link;
+        *list=link;
+        return 0;
     } else {
-        tp->stack = (char*) malloc(sizeof(char) * STACK_SIZE);
-#if __x86_64__
-        asm __volatile__("movq %0, %%rsp" ::
-        "r"((intptr_t) (tp->stack + STACK_SIZE - 1)));
-#else
-        asm __volatile__("movl %0, %%esp" ::
-		   "r"((intptr_t) (tp->stack + STACK_SIZE - 1)));
-#endif
-        bthread_exit(tp->body(tp->arg));
+        //lista non vuota scorro fino alla fine e aggiungo il nodo
+        TQueueNode * current = ( * list) -> next;
+        unsigned long int size = tqueue_size(* list);
 
+        for (int i = 0; i < size-1; i++) {
+            current = current -> next;
+        }
+        //creo nodo dinamicamente
+        TQueueNode * link = ( TQueueNode * ) malloc(sizeof( TQueueNode));
+        //assegno i dati
+        link -> data = data;
+        //lo attacco alla testa
+        link -> next = ( * list) -> next;
+        //attacco ultimo nodo al nodo appena creato
+        current -> next = link;
+        return size + 1;
     }
-}
-/*Terminates the calling thread and returns a value via retval that will be available to another
-thread in the same process that calls bthread_join, then yields to the scheduler. Between
-bthread_exit and the corresponding bthread_join the thread stays in the __BTHREAD_ZOMBIE state.*/
-void bthread_exit(void *retval){
-    volatile __bthread_scheduler_private* scheduler = bthread_get_scheduler();
-    __bthread_private* currentThread = (__bthread_private*) scheduler->current_item;
-    currentThread->state=__BTHREAD_ZOMBIE;
-    retval= currentThread->retval;
-}
+};
+
+/* Removes and returns the element at the beginning of the list, NULL if the
+queue is empty */
+void * tqueue_pop(TQueue * q) {
+    if (tqueue_size( * q) == 0) {
+        return NULL;
+    } else {
+        TQueueNode * current = ( * q);
+        int size = tqueue_size( * q);
+        for (int i = 0; i < size-1; i++) {
+            current = current -> next;
+        }
+        //devo rimuovere la testa
+        TQueueNode * toRemove = * q;
+        //attacco ultimo nodo al secondo
+        current->next=toRemove->next;
+        return toRemove;
+    }
+};
+
+/* Returns the number of elements in the list */
+unsigned long int tqueue_size(TQueue q) {
+    if (q == NULL) {
+        return 0;
+    }
+    //current node is head
+    TQueueNode * head = q->next;
+    TQueueNode * current = q->next;
+
+    int size = 1;
+    while (current->next != head) {
+        size++;
+        current = current->next;
+    }
+    //printf("Size %d\n",size);
+    return size;
+};
+
+/* Returns a 'view' on the list starting at (a positive) offset distance,
+ * NULL if the queue is empty */
+TQueue tqueue_at_offset(TQueue q, unsigned long int offset) {
+    if (q == NULL)
+        return NULL;
+    TQueueNode * current = q -> next;
+    for (int i = 0; i < offset; i++) {
+        current = current -> next;
+    }
+    return current;
+};
+/* Returns the data on the first node of the given list */
+void * tqueue_get_data(TQueue q) {
+    if(q==NULL){
+        printf("Error list empty\n");
+    }
+    return q -> data;
+};

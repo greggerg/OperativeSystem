@@ -42,17 +42,7 @@ __bthread_scheduler_private. Fields of this structure need to be initialized as 
 Other functions will call this method to obtain this pointer. This function should not be accessible
 outside the library*/
 
-__bthread_scheduler_private *bthread_get_scheduler() {
-    if (sp == NULL) {
-        printf("Creating the scheduler\n");
-        sp = malloc(sizeof(__bthread_scheduler_private));
-        sp->queue = NULL;
-        sp->current_item = NULL;
-//sp->context;
-        sp->current_tid = -1;
-    }
-    return sp;
-};
+__bthread_scheduler_private *bthread_get_scheduler();
 
 void bthread_cleanup() {
     free(sp);
