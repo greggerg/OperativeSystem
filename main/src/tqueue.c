@@ -48,7 +48,7 @@ void * tqueue_pop(TQueue * q) {
         return NULL;
     } else {
         TQueueNode * current = ( * q);
-        int size = tqueue_size( * q);
+        unsigned long size = tqueue_size(* q);
         for (int i = 0; i < size-1; i++) {
             current = current -> next;
         }
@@ -69,7 +69,7 @@ unsigned long int tqueue_size(TQueue q) {
     TQueueNode * head = q->next;
     TQueueNode * current = q->next;
 
-    int size = 1;
+    unsigned long size = 1;
     while (current->next != head) {
         size++;
         current = current->next;
