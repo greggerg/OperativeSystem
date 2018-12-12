@@ -9,7 +9,7 @@
 #pragma clang diagnostic push
 #pragma ide diagnostic ignored "OCUnusedGlobalDeclarationInspection"
 #pragma clang diagnostic ignored "-Wincompatible-pointer-types-discards-qualifiers"
-#define STACK_SIZE 16
+#define STACK_SIZE 8388608
 
 __bthread_scheduler_private *bthread_get_scheduler() {
     static __bthread_scheduler_private *sp;
