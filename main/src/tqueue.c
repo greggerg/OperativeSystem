@@ -5,58 +5,50 @@
 typedef struct TQueueNode {
     struct TQueueNode *next;
     void *data;
-}
-        TQueueNode;
+}TQueueNode;
 
 /* Adds a new element at the end of the list, returns its position */
-unsigned long int tqueue_enqueue(TQueue *list, void *data) {
+unsigned long int tqueue_enqueue(TQueue *q, void *data) {
+    TQueueNode *elem = (TQueueNode *) malloc(sizeof(TQueueNode));
 
-    if (*list == NULL) {
-        *list = (TQueue) malloc(sizeof(TQueue));
-        //printf("List empty adding first element %d\n",*(int*)data);
-        //creo nodo dinamicamente
-        TQueueNode *link = (TQueueNode *) malloc(sizeof(TQueueNode));
-        //assegno i dati
-        link->data = data;
-        link->next = link;
-        *list = link;
+    if (*q == NULL) {
+        elem->data = data;
+        elem->next = elem;
+        *q = elem;
         return 0;
     } else {
         //lista non vuota scorro fino alla fine e aggiungo il nodo
-        TQueueNode *current = (*list)->next;
-        unsigned long int size = tqueue_size(*list);
-
+        TQueueNode *current = (*q)->next;
+        unsigned long int size = tqueue_size(*q);
         for (int i = 0; i < size - 1; i++) {
             current = current->next;
         }
         //creo nodo dinamicamente
-        TQueueNode *link = (TQueueNode *) malloc(sizeof(TQueueNode));
         //assegno i dati
-        link->data = data;
+        elem->data = data;
         //lo attacco alla testa
-        link->next = (*list)->next;
+        elem->next = (*q)->next;
         //attacco ultimo nodo al nodo appena creato
-        current->next = link;
-        return size + 1;
+        current->next = elem;
+        return size;
     }
 };
 
 /* Removes and returns the element at the beginning of the list, NULL if the
 queue is empty */
 void *tqueue_pop(TQueue *q) {
-    if (tqueue_size(*q) == 0) {
+    unsigned long size = tqueue_size(*q);
+    if (size == 0) {
         return NULL;
     } else {
-        TQueueNode *current = (*q);
-        unsigned long size = tqueue_size(*q);
-        for (int i = 0; i < size - 1; i++) {
+        TQueueNode *current = *q;
+        void *retval = current->data;
+        for (int i = 0; i < size-1; i++) {
             current = current->next;
         }
-        //devo rimuovere la testa
-        TQueueNode *toRemove = *q;
-        //attacco ultimo nodo al secondo
-        current->next = toRemove->next;
-        return toRemove;
+        current->next = *q;
+       free(current);
+        return retval;
     }
 };
 

@@ -2,29 +2,27 @@
 #include <stdlib.h>
 #include "../../main/include/bthread.h"
 
-typedef struct TQueueNode {
-    struct TQueueNode *next;
-    void *data;
-}
-        TQueueNode;
-
 void *routine(void *arg) {
-    printf("Hello thread %d\n", *(int *) arg);
-
+    printf("Hello thread %s\n", (char *) arg);
     return arg;
 }
 
 void bthread_test() {
-    bthread_t bthread = 17;
+    bthread_t bthread;
+    bthread_t bthread2;
     void *arg = "Greg";
+    void *arg2 = "Mike";
 //create
     printf("Trying\n");
-    int result = bthread_create(&bthread, NULL, &routine, arg);
+    int result = bthread_create(&bthread, NULL, routine, arg);
+    int result2 = bthread_create(&bthread2, NULL, routine, arg2);
 //start
+
 //join
     void *retval = "42s";
     printf("Trying to join\n");
     bthread_join(17, &retval);
+    bthread_join(2, &retval);
 
 
 //yield

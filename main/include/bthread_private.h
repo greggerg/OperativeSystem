@@ -19,12 +19,10 @@ typedef void *(*bthread_routine)(void *);
 typedef struct {
     bthread_t tid;
     bthread_routine body;
-    //body argument
     void *arg;
     bthread_state state;
     bthread_attr_t attr;
     char *stack;
-    //stack context
     jmp_buf context;
     void *retval;
 } __bthread_private;
