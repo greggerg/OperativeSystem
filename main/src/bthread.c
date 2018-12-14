@@ -11,6 +11,8 @@
 #pragma clang diagnostic ignored "-Wincompatible-pointer-types-discards-qualifiers"
 #define STACK_SIZE 8388608
 
+static void printQueue(TQueue pNode);
+
 __bthread_scheduler_private *bthread_get_scheduler() {
     static __bthread_scheduler_private *sp = NULL;
 
@@ -28,7 +30,7 @@ static int bthread_check_if_zombie(bthread_t bthread, void **retval) {
     __bthread_private *thread = tqueue_get_data(scheduler->current_item);
     //Checks whether the thread referenced by the parameter bthread has reached a zombie state.
     if (thread->state == __BTHREAD_ZOMBIE) {
-        printf("Zombie\n");
+        printf("Thread is a zombie and should be reaped\n");
         if (retval != NULL) {
             //if retval is not NULL the exit status of the target thread (i.e. the value that was supplied to bthread_exit) is copied into the location pointed to by *retval;
             thread->retval = *retval;
@@ -36,12 +38,25 @@ static int bthread_check_if_zombie(bthread_t bthread, void **retval) {
             free(thread->stack);
             //the thread's private data structure is removed from the queue (Note: depending on your implementation, you might need to pay attention to
             //the special case where the scheduler's queue pointer itself changes!)
-            tqueue_pop(&scheduler->current_item);
+            TQueue q = scheduler->current_item;
+            q = scheduler->current_item;
+            tqueue_pop(&q);
         }
         return 1;
     } else {
         //If it's not the case the function returns 0.
         return 0;
+    }
+}
+
+static void printQueue(TQueue pNode) {
+    __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    __bthread_private *tp = NULL;
+   printf("\nCurrent list\n");
+    for (int i = 0; i < tqueue_size(pNode); ++i) {
+        tp = tqueue_get_data(scheduler->current_item);
+        scheduler->current_item = tqueue_at_offset(scheduler->current_item, 1);
+        printf("Thread %lu\n", tp->tid);
     }
 }
 
@@ -62,7 +77,7 @@ int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start
     thread->tid = tqueue_enqueue(&scheduler->queue, thread);
     *bthread = thread->tid;
     scheduler->current_item = scheduler->queue;
-    printf("Position in the queue %ld\n", *bthread);
+    printf("Created thread with tid:  %ld\n", thread->tid);
     return (int) thread->tid;
 }
 
@@ -72,7 +87,7 @@ void bthread_cleanup() {
 }
 
 static TQueue bthread_get_queue_at(bthread_t bthread) {
-    volatile __bthread_scheduler_private *sp= bthread_get_scheduler();
+    volatile __bthread_scheduler_private *sp = bthread_get_scheduler();
     return tqueue_at_offset(sp->queue, bthread);
 }
 
@@ -84,10 +99,7 @@ for implementing preemption.*/
 void bthread_yield() {
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     __bthread_private *currentThread = (__bthread_private *) tqueue_get_data(scheduler->current_item);
-    printf("Current thread = %lu\n",currentThread->tid);
-    if (!save_context(currentThread->context)){
-        volatile TQueue next = tqueue_at_offset(scheduler->current_item, 1);
-        scheduler->current_item=next;
+    if (!save_context(currentThread->context)) {
         restore_context(scheduler->context);
     }
 }
@@ -107,10 +119,9 @@ int bthread_join(bthread_t bthread, void **retval) {
         tp = tqueue_get_data(scheduler->current_item);
         tp->state = __BTHREAD_READY;
     } while (tp->state != __BTHREAD_READY);
-    printf("A thread starts! \n");
     // Restore context or setup stack and perform first call
     if (tp->stack) {
-        printf("Restore %lu\n",tp->tid);
+        printf("Restore %lu\n", tp->tid);
         restore_context(tp->context);
     } else {
         printf("Setting the stack for the first time\n");
@@ -122,6 +133,8 @@ int bthread_join(bthread_t bthread, void **retval) {
         asm __volatile__("movl %0, %%esp" ::
            "r"((intptr_t) (tp->stack + STACK_SIZE - 1)));
 #endif
+        printf("A thread starts! \n");
+
         bthread_exit(tp->body(tp->arg));
 
     }
@@ -133,12 +146,13 @@ bthread_exit and the corresponding bthread_join the thread stays in the __BTHREA
 void bthread_exit(void *retval) {
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     volatile __bthread_private *currentThread = (__bthread_private *) tqueue_get_data(scheduler->current_item);
-    if(currentThread==NULL){
+    if (currentThread == NULL) {
         printf("Invalid thread\n");
 
-    }else{
-    printf("Exiting thread %lu\n" , currentThread->tid);
-    currentThread->state = __BTHREAD_ZOMBIE;
-    currentThread->retval = retval;}
-   bthread_yield();
+    } else {
+        printf("\n----------------------------------------------------------------\nExiting thread %lu\n", currentThread->tid);
+        currentThread->state = __BTHREAD_ZOMBIE;
+        currentThread->retval = retval;
+    }
+    bthread_printf("Yield\n");
 }

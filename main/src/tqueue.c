@@ -5,50 +5,49 @@
 typedef struct TQueueNode {
     struct TQueueNode *next;
     void *data;
-}TQueueNode;
+} TQueueNode;
 
 /* Adds a new element at the end of the list, returns its position */
 unsigned long int tqueue_enqueue(TQueue *q, void *data) {
-    TQueueNode *elem = (TQueueNode *) malloc(sizeof(TQueueNode));
-
+    TQueueNode* new_element = (TQueueNode*) malloc(sizeof(TQueueNode));
+    new_element->data = data;
+    unsigned long int index = 0;
     if (*q == NULL) {
-        elem->data = data;
-        elem->next = elem;
-        *q = elem;
-        return 0;
+        *q = new_element;
+        new_element->next = *q;
     } else {
-        //lista non vuota scorro fino alla fine e aggiungo il nodo
-        TQueueNode *current = (*q)->next;
-        unsigned long int size = tqueue_size(*q);
-        for (int i = 0; i < size - 1; i++) {
-            current = current->next;
+        TQueueNode* head = *q;
+        index = 1;
+        while(head->next != *q) {
+            head = head->next;
+            index++;
         }
-        //creo nodo dinamicamente
-        //assegno i dati
-        elem->data = data;
-        //lo attacco alla testa
-        elem->next = (*q)->next;
-        //attacco ultimo nodo al nodo appena creato
-        current->next = elem;
-        return size;
+        head->next = new_element;
+        new_element->next = *q;
     }
-};
-
+    return index;
+    }
 /* Removes and returns the element at the beginning of the list, NULL if the
 queue is empty */
 void *tqueue_pop(TQueue *q) {
     unsigned long size = tqueue_size(*q);
+    TQueueNode *toRemove=NULL;
     if (size == 0) {
         return NULL;
     } else {
         TQueueNode *current = *q;
-        void *retval = current->data;
-        for (int i = 0; i < size-1; i++) {
-            current = current->next;
+        if (current->next == current) {
+            //rimuovo ultimo nodo
+            *q = NULL;
+        } else {
+            for (int i = 0; i < size - 1; i++) {
+                current = current->next;
+            }
+            toRemove = *q;
+            //attacco ultimo nodo al secondo
+            current->next = toRemove->next;
         }
-        current->next = *q;
-       free(current);
-        return retval;
+        return toRemove;
     }
 };
 
@@ -75,7 +74,7 @@ unsigned long int tqueue_size(TQueue q) {
 TQueue tqueue_at_offset(TQueue q, unsigned long int offset) {
     if (q == NULL)
         return NULL;
-    TQueueNode *current = q->next;
+    TQueueNode *current = q;
     for (int i = 0; i < offset; i++) {
         current = current->next;
     }

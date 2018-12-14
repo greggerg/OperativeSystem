@@ -4,6 +4,7 @@
 #define save_context(CONTEXT) sigsetjmp(CONTEXT, 1)
 #define restore_context(CONTEXT) siglongjmp(CONTEXT, 1)
 
+#include <setjmp.h>
 typedef unsigned long int bthread_t;
 
 typedef struct {

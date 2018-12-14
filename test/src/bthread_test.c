@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <unistd.h>
 #include "../../main/include/bthread.h"
 
 void *routine(void *arg) {
@@ -8,24 +9,22 @@ void *routine(void *arg) {
 }
 
 void bthread_test() {
-    bthread_t bthread;
-    bthread_t bthread2;
+    bthread_t threads[10];
     void *arg = "Greg";
-    void *arg2 = "Mike";
+    void *retval = "42";
+
 //create
     printf("Trying\n");
-    int result = bthread_create(&bthread, NULL, routine, arg);
-    int result2 = bthread_create(&bthread2, NULL, routine, arg2);
-//start
-
+    for (unsigned long i = 0; i < 10; ++i) {
+        threads[i] = i;
+        bthread_create(&threads[i], NULL, routine, arg);
+    }
+    printf("Threads created!\n");
 //join
-    void *retval = "42s";
-    printf("Trying to join\n");
-    bthread_join(17, &retval);
-    bthread_join(2, &retval);
-
-
-//yield
-//exit
-    printf("bthread test succeded\n");
+    for (int j = 0; j < 10; ++j) {
+        int result = bthread_join(threads[j], &retval);
+        printf("Result of join %d\n", result);
+    }
+    printf("Threads joined!\n");
+    printf("bthread test succeeded\n");
 }

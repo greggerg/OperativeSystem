@@ -1,12 +1,25 @@
 #include <stdlib.h>
 #include <stdio.h>
 #include "../../main/include/tqueue.h"
+#include "../../main/include/bthread_private.h"
 
 typedef struct TQueueNode {
     struct TQueueNode *next;
     void *data;
 }
         TQueueNode;
+
+static void printQueue(TQueue pNode) {
+    printf("\nCurrent list\n");
+    TQueue current_item = pNode;
+    int number;
+    unsigned long size = tqueue_size(pNode);
+    for (int i = 0; i < size; ++i) {
+        number = *(int *) tqueue_get_data(current_item);
+        current_item = current_item->next;
+        printf("Thread %d\n", number);
+    }
+}
 
 void tqueue_test() {
     TQueue list = NULL;
@@ -21,24 +34,23 @@ void tqueue_test() {
     int value2 = 34;
     tqueue_enqueue(&list, (void *) &value2);
     int value3 = 54;
-    tqueue_enqueue(&list, (void *) &value3);
+   tqueue_enqueue(&list, (void *) &value3);
 //test size
     size = tqueue_size(list);
     if (size != 3) {
         printf("Error size not correct\n");
     };
 //pop
-    TQueueNode *element = tqueue_pop(&list);
-    int data = *(int *) element->data;
+     tqueue_pop(&list);
+    int data = *(int*) tqueue_get_data(list);
     if (data != 17) {
-        printf("Error first element is not 17\n");
+        printf("Error first element is not 17 %d\n",data);
     }
 //test size
     size = tqueue_size(list);
     if (size != 2) {
         printf("Error popped size not correct\n");
     };
-//get data
     data = *(int *) tqueue_get_data(list);
     if (data != 17) {
         printf("Error head element is not 17\n");
@@ -48,7 +60,8 @@ void tqueue_test() {
 //test view
     data = *(int *) second->data;
     if (data != 34) {
-        printf("Error second element is not 34\n");
+        printf("Error second element is not 34 but %d\n",data);
     }
     printf("TQueue test succeded\n");
 }
+
