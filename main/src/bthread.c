@@ -35,7 +35,7 @@ static int bthread_check_if_zombie(bthread_t bthread, void **retval) {
     __bthread_private *thread = tqueue_get_data(scheduler->current_item);
     //Checks whether the thread referenced by the parameter bthread has reached a zombie state.
     if (thread->state == __BTHREAD_ZOMBIE) {
-        printf("Thread %lu is a zombie and should be reaped\n", thread->tid);
+        trace("Zombie thread with tid:  %ld\n", thread->tid);
         if (retval != NULL) {
             //if retval is not NULL the exit status of the target thread (i.e. the value that was supplied to bthread_exit) is copied into the location pointed to by *retval;
             thread->retval = *retval;
@@ -85,7 +85,7 @@ int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start
     thread->tid = tqueue_enqueue(&scheduler->queue, thread);
     *bthread = thread->tid;
     scheduler->current_item = scheduler->queue;
-    printf("Created thread with tid:  %ld\n", thread->tid);
+    trace("Created thread with tid:  %ld\n", thread->tid);
     return (int) thread->tid;
 }
 
@@ -135,6 +135,7 @@ int bthread_join(bthread_t bthread, void **retval) {
             }
         }
     } while (tp->state != __BTHREAD_READY);
+    trace("Thread starts tid:  %ld\n", tp->tid);
     // Restore context or setup stack and perform first call
     if (tp->stack) {
         restore_context(tp->context);
@@ -167,6 +168,7 @@ void bthread_exit(void *retval) {
                currentThread->tid);
         currentThread->state = __BTHREAD_ZOMBIE;
         currentThread->retval = retval;
+        trace("Thread with tid:  %ld exiting\n", thread->tid);
         //  bthread_yield();
         bthread_printf("Yield\n");
     }
@@ -182,6 +184,7 @@ void bthread_sleep(double ms) {
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     __bthread_private *thread = tqueue_get_data(scheduler->current_item);
     thread->state = __BTHREAD_SLEEPING;
+    trace("Thread with tid:  %ld sleeping\n", thread->tid);
     thread->wake_up_time = ms + get_current_time_millis();
     bthread_yield();
 }

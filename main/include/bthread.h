@@ -4,6 +4,14 @@
 
 #ifndef OPERATIVESYSTEM_BTHREAD_H
 #define OPERATIVESYSTEM_BTHREAD_H
+//tracing
+#ifdef TRACING
+#define trace(...) printf (stderr, __VA_ARGS__)
+#else
+#define trace(...)
+#endif
+//TODO implement an atomic_trace macro to be used when pre-emption is enabled
+//vecchia macro per yieldare
 /*#define bthread_printf(...) \
 printf(__VA_ARGS__); \
 bthread_yield();
