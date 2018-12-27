@@ -1,9 +1,14 @@
-#include <stdio.h>
-#include <stdlib.h>
+
 #include "../include/bthread.h"
 #include "../include/bthread_private.h"
 #include "../include/tqueue.h"
+#include <stdio.h>
+#include <stdlib.h>
+#include <sys/time.h>
+#include <stdbool.h>
+#include <signal.h>
 #include <stdint.h>
+#include <stdarg.h>
 //disable notify for save_context
 #pragma clang diagnostic push
 #pragma clang diagnostic push
@@ -15,7 +20,6 @@ static void printQueue(TQueue pNode);
 
 __bthread_scheduler_private *bthread_get_scheduler() {
     static __bthread_scheduler_private *sp = NULL;
-
     if (sp == NULL) {
         printf("Creating the scheduler\n");
         sp = malloc(sizeof(__bthread_scheduler_private));
@@ -30,14 +34,14 @@ static int bthread_check_if_zombie(bthread_t bthread, void **retval) {
     __bthread_private *thread = tqueue_get_data(scheduler->current_item);
     //Checks whether the thread referenced by the parameter bthread has reached a zombie state.
     if (thread->state == __BTHREAD_ZOMBIE) {
-        printf("Thread is a zombie and should be reaped\n");
+        printf("Thread %lu is a zombie and should be reaped\n", thread->tid);
         if (retval != NULL) {
             //if retval is not NULL the exit status of the target thread (i.e. the value that was supplied to bthread_exit) is copied into the location pointed to by *retval;
             thread->retval = *retval;
             //the thread's stack is freed
             free(thread->stack);
-            //the thread's private data structure is removed from the queue (Note: depending on your implementation, you might need to pay attention to
-            //the special case where the scheduler's queue pointer itself changes!)
+            //the thread's private data structure is removed from the queue (Note: depending on your implementation, you might need to pay attention to the special case where
+            // the scheduler's queue pointer itself changes!)
             TQueue q = scheduler->current_item;
             q = scheduler->current_item;
             tqueue_pop(&q);
@@ -52,7 +56,7 @@ static int bthread_check_if_zombie(bthread_t bthread, void **retval) {
 static void printQueue(TQueue pNode) {
     __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     __bthread_private *tp = NULL;
-   printf("\nCurrent list\n");
+    printf("\nCurrent list\n");
     for (int i = 0; i < tqueue_size(pNode); ++i) {
         tp = tqueue_get_data(scheduler->current_item);
         scheduler->current_item = tqueue_at_offset(scheduler->current_item, 1);
@@ -68,7 +72,8 @@ int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start
     __bthread_private *thread = malloc(sizeof(__bthread_private));
     thread->body = start_routine;
     thread->arg = arg;
-    thread->state = __BTHREAD_BLOCKED;
+    thread->state = __BTHREAD_READY;
+    //TODO rimuovere
     if (attr != NULL) {
         thread->attr = *attr;
     }
@@ -80,7 +85,7 @@ int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start
     printf("Created thread with tid:  %ld\n", thread->tid);
     return (int) thread->tid;
 }
-
+//TODO
 void bthread_cleanup() {
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     free(scheduler);
@@ -91,37 +96,43 @@ static TQueue bthread_get_queue_at(bthread_t bthread) {
     return tqueue_at_offset(sp->queue, bthread);
 }
 
-/*Saves the thread context and restores (long-jumps to) the scheduler context. Saving the thread
-context is achieved using sigsetjmp, which is similar to setjmp but can also save the signal
-mask if the provided additional parameter is not zero (to restore both the context and the signal
-mask the corresponding call is siglongjmp). Saving and restoring the signal mask is required
-for implementing preemption.*/
+/*Saves the thread context and restores (long-jumps to) the scheduler context. Saving using sigsetjmp,
+ * which is similar to setjmp but can also save the signal mask if the provided additional parameter
+ * is not zero (to restore both the context and the signal mask the corresponding call is siglongjmp).
+ * Saving and restoring the signal mask is required for implementing preemption.*/
 void bthread_yield() {
+    bthread_block_timer_signal();//lock atomico
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     __bthread_private *currentThread = (__bthread_private *) tqueue_get_data(scheduler->current_item);
     if (!save_context(currentThread->context)) {
         restore_context(scheduler->context);
     }
+    bthread_unblock_timer_signal();//unlock
 }
 
 
 int bthread_join(bthread_t bthread, void **retval) {
-
+    bthread_block_timer_signal();//lock atomico
+    bthread_setup_timer();//setto il timer per la preemption
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     scheduler->current_item = scheduler->queue;
     save_context(scheduler->context);
     if (bthread_check_if_zombie(bthread, retval)) return 0;
-    printf("Not a zombie \n");
     volatile __bthread_private *tp;
     do {
         //move to the next one
         scheduler->current_item = tqueue_at_offset(scheduler->current_item, 1);
         tp = tqueue_get_data(scheduler->current_item);
-        tp->state = __BTHREAD_READY;
+        //see if someone needs to be waken up
+        if (tp->state == __BTHREAD_SLEEPING) {
+            if (tp->wake_up_time <= get_current_time_millis()) {
+                printf("Thread %lu \n", tp->tid);
+                tp->state = __BTHREAD_READY;
+            }
+        }
     } while (tp->state != __BTHREAD_READY);
     // Restore context or setup stack and perform first call
     if (tp->stack) {
-        printf("Restore %lu\n", tp->tid);
         restore_context(tp->context);
     } else {
         printf("Setting the stack for the first time\n");
@@ -134,9 +145,7 @@ int bthread_join(bthread_t bthread, void **retval) {
            "r"((intptr_t) (tp->stack + STACK_SIZE - 1)));
 #endif
         printf("A thread starts! \n");
-
         bthread_exit(tp->body(tp->arg));
-
     }
 }
 
@@ -148,11 +157,82 @@ void bthread_exit(void *retval) {
     volatile __bthread_private *currentThread = (__bthread_private *) tqueue_get_data(scheduler->current_item);
     if (currentThread == NULL) {
         printf("Invalid thread\n");
-
+//TODO remove if
     } else {
-        printf("\n----------------------------------------------------------------\nExiting thread %lu\n", currentThread->tid);
+        printf("\n----------------------------------------------------------------\nExiting thread %lu\n",
+               currentThread->tid);
         currentThread->state = __BTHREAD_ZOMBIE;
         currentThread->retval = retval;
+      //  bthread_yield();
+        bthread_printf("Yield\n");
     }
-    bthread_printf("Yield\n");
+}
+
+double get_current_time_millis() {
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    return (tv.tv_sec) * 1000 + (int) ((tv.tv_usec) / 1000);
+}
+
+void bthread_sleep(double ms) {
+    volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    __bthread_private *thread = tqueue_get_data(scheduler->current_item);
+    thread->state = __BTHREAD_SLEEPING;
+    thread->wake_up_time = ms + get_current_time_millis();
+    bthread_yield();
+}
+
+int bthread_cancel(bthread_t bthread) {
+    volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    volatile TQueue queue = tqueue_at_offset(scheduler->queue, bthread);
+    //thread da terminare
+    volatile __bthread_private *thread = tqueue_get_data(queue);
+    thread->cancel_req = 1;
+}
+//Threads can also request cancellation of another thread: cancellation happens as soon as the thread receiving the request calls testcancel.
+//Cancellation (through bthread_exit) happens when the recipient thread executes bthread_testcancel . The return value of a cancelled thread is -1
+void bthread_testcancel(void) {
+    volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    __bthread_private *thread = tqueue_get_data(scheduler->current_item);
+    if (thread->cancel_req == 1) {
+        bthread_exit((void *) -1);
+    }
+}
+/*Preemption can be implemented by means of a timer signal that periodically interrupts the executing thread and returns control to the scheduler. To set such a timer we employ setitimer:*/
+static void bthread_setup_timer() {
+    static bool initialized = false;
+    if (!initialized) {
+        signal(SIGVTALRM, (void (*)()) bthread_yield);
+        struct itimerval time;
+        time.it_interval.tv_sec = 0;
+        time.it_interval.tv_usec = QUANTUM_USEC;
+        time.it_value.tv_sec = 0;
+        time.it_value.tv_usec = QUANTUM_USEC;
+        initialized = true;
+        setitimer(ITIMER_VIRTUAL, &time, NULL);
+    }
+}
+//lock atomico bloccando il segnale
+void bthread_block_timer_signal() {
+    sigset_t signal;
+    sigemptyset(&signal);
+    sigaddset(&signal, SIGVTALRM);
+    sigprocmask(SIG_BLOCK, &signal, NULL);//blocca
+}
+// Unlocka il segnale
+void bthread_unblock_timer_signal() {
+    sigset_t signal;
+    sigemptyset(&signal);
+    sigaddset(&signal, SIGVTALRM);
+    sigprocmask(SIG_UNBLOCK, &signal, NULL);//sblocca
+}
+//sostituisce la macro
+void bthread_printf(const char *format, ...) // requires stdlib.h and stdarg.h
+{
+    bthread_block_timer_signal();
+    va_list args;
+    va_start(args, format);
+    vprintf(format, args);
+    va_end(args);
+    bthread_unblock_timer_signal();
 }
