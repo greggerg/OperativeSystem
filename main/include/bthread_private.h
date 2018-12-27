@@ -56,5 +56,5 @@ void bthread_block_timer_signal();
 void bthread_unblock_timer_signal();
 void roundRobin();
 void priority();
-void random();
+void randomChoice();
 #endif

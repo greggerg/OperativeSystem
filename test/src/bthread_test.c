@@ -38,8 +38,8 @@ void bthread_test() {
   */
     unsigned long bthread;
     unsigned long bthread2;
-    bthread_create(&bthread, NULL, sleepRoutine, arg);
-    bthread_create(&bthread2, NULL, sleepRoutine, arg);
+    bthread_create(&bthread, NULL, sleepRoutine, arg,1);
+    bthread_create(&bthread2, NULL, sleepRoutine, arg,2);
     bthread_join(bthread, &retval);
     bthread_join(bthread2, &retval);
     printf("Sleeping test ended------------------------------------\n");

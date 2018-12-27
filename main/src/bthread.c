@@ -261,7 +261,7 @@ void priority() {
     scheduler->current_item = queue;
 }
 
-void random() {
+void randomChoice() {
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
     volatile __bthread_private *thread;
     TQueue queue;
