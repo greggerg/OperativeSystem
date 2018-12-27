@@ -19,14 +19,15 @@
 static void printQueue(TQueue pNode);
 
 __bthread_scheduler_private *bthread_get_scheduler() {
-    static __bthread_scheduler_private *sp = NULL;
-    if (sp == NULL) {
+    static __bthread_scheduler_private *scheduler = NULL;
+    if (scheduler == NULL) {
         printf("Creating the scheduler\n");
-        sp = malloc(sizeof(__bthread_scheduler_private));
-        sp->queue = NULL;
-        sp->current_item = NULL;
+        scheduler = malloc(sizeof(__bthread_scheduler_private));
+        scheduler->queue = NULL;
+        scheduler->current_item = NULL;
+        scheduler->scheduling_routine = roundRobin;
     }
-    return sp;
+    return scheduler;
 };
 
 static int bthread_check_if_zombie(bthread_t bthread, void **retval) {
@@ -68,11 +69,13 @@ static void printQueue(TQueue pNode) {
 Creates a new thread structure and puts it at the end of the queue. The thread identifier (stored in the buffer pointed by bthread) corresponds to the position in the queue.
  The thread is not started when calling this function. Attributes passed through the attr argument are ignored
 (thus it is possible to pass a NULL pointer). The stack pointer for new created threads is NULL.*/
-int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start_routine)(void *), void *arg) {
+int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start_routine)(void *), void *arg,
+                   unsigned int priority) {
     __bthread_private *thread = malloc(sizeof(__bthread_private));
     thread->body = start_routine;
     thread->arg = arg;
     thread->state = __BTHREAD_READY;
+    thread->priority = priority;
     //TODO rimuovere
     if (attr != NULL) {
         thread->attr = *attr;
@@ -85,6 +88,7 @@ int bthread_create(bthread_t *bthread, const bthread_attr_t *attr, void *(*start
     printf("Created thread with tid:  %ld\n", thread->tid);
     return (int) thread->tid;
 }
+
 //TODO
 void bthread_cleanup() {
     volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
@@ -163,7 +167,7 @@ void bthread_exit(void *retval) {
                currentThread->tid);
         currentThread->state = __BTHREAD_ZOMBIE;
         currentThread->retval = retval;
-      //  bthread_yield();
+        //  bthread_yield();
         bthread_printf("Yield\n");
     }
 }
@@ -189,6 +193,7 @@ int bthread_cancel(bthread_t bthread) {
     volatile __bthread_private *thread = tqueue_get_data(queue);
     thread->cancel_req = 1;
 }
+
 //Threads can also request cancellation of another thread: cancellation happens as soon as the thread receiving the request calls testcancel.
 //Cancellation (through bthread_exit) happens when the recipient thread executes bthread_testcancel . The return value of a cancelled thread is -1
 void bthread_testcancel(void) {
@@ -198,6 +203,7 @@ void bthread_testcancel(void) {
         bthread_exit((void *) -1);
     }
 }
+
 /*Preemption can be implemented by means of a timer signal that periodically interrupts the executing thread and returns control to the scheduler. To set such a timer we employ setitimer:*/
 static void bthread_setup_timer() {
     static bool initialized = false;
@@ -212,6 +218,7 @@ static void bthread_setup_timer() {
         setitimer(ITIMER_VIRTUAL, &time, NULL);
     }
 }
+
 //lock atomico bloccando il segnale
 void bthread_block_timer_signal() {
     sigset_t signal;
@@ -219,6 +226,7 @@ void bthread_block_timer_signal() {
     sigaddset(&signal, SIGVTALRM);
     sigprocmask(SIG_BLOCK, &signal, NULL);//blocca
 }
+
 // Unlocka il segnale
 void bthread_unblock_timer_signal() {
     sigset_t signal;
@@ -226,6 +234,45 @@ void bthread_unblock_timer_signal() {
     sigaddset(&signal, SIGVTALRM);
     sigprocmask(SIG_UNBLOCK, &signal, NULL);//sblocca
 }
+
+//Scheduling procedures
+void roundRobin() {
+    volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    scheduler->current_item = tqueue_at_offset(scheduler->current_item, 1);
+}
+
+void priority() {
+    volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    volatile __bthread_private *thread;
+    TQueue queue = NULL;
+    unsigned long size = tqueue_size(scheduler->queue);
+    volatile unsigned int priorityLevel = 999;
+    unsigned long i;
+    for (i = 0; i < size; i++) {
+        TQueue tempQueue = tqueue_at_offset(scheduler->queue, i);
+        thread = tqueue_get_data(tempQueue);
+        if (thread->state != __BTHREAD_BLOCKED) {
+            if (thread->priority < priorityLevel) {
+                priorityLevel = thread->priority;
+                queue = tempQueue;
+            }
+        }
+    }
+    scheduler->current_item = queue;
+}
+
+void random() {
+    volatile __bthread_scheduler_private *scheduler = bthread_get_scheduler();
+    volatile __bthread_private *thread;
+    TQueue queue;
+    do {
+        unsigned long randID = rand() % tqueue_size(scheduler->queue);
+        queue = tqueue_at_offset(scheduler->queue, randID);
+        thread = tqueue_get_data(queue);
+    } while (!(thread->state == __BTHREAD_READY));
+    scheduler->current_item = queue;
+}
+
 //sostituisce la macro
 void bthread_printf(const char *format, ...) // requires stdlib.h and stdarg.h
 {
@@ -235,4 +282,9 @@ void bthread_printf(const char *format, ...) // requires stdlib.h and stdarg.h
     vprintf(format, args);
     va_end(args);
     bthread_unblock_timer_signal();
+}
+
+void setSchedulingRoutine(bthread_scheduling_routine routine) {
+    volatile __bthread_scheduler_private* scheduler = bthread_get_scheduler();
+    scheduler->scheduling_routine = routine;
 }

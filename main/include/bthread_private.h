@@ -30,6 +30,7 @@ typedef struct {
     void *retval;
     double wake_up_time;
     int cancel_req;
+    unsigned int priority;
 } __bthread_private;
 
 //scheduler
@@ -53,5 +54,7 @@ static int bthread_check_if_zombie(bthread_t bthread, void **retval);
 static void bthread_setup_timer();
 void bthread_block_timer_signal();
 void bthread_unblock_timer_signal();
-
+void roundRobin();
+void priority();
+void random();
 #endif

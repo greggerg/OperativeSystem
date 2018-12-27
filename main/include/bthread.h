@@ -24,5 +24,5 @@ void bthread_exit(void *retval);
 
 void bthread_printf(const char *format, ...);
 
-
+void setSchedulingRoutine(bthread_scheduling_routine routine);
 #endif
